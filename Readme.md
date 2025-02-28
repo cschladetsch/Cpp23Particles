@@ -2,6 +2,10 @@
 
 Interactive particle system with multiple emitter types, dynamic force fields, and particle interactions using C++23 and SDL2. Explore colorful visual effects, physics simulation, and multithreaded performance optimizations.
 
+## Demo
+
+![Demo](/resources/particles-1.gif)
+
 ## Features
 
 - **Multiple Emitter Types**: Fountain, explosion, snow, spiral patterns
