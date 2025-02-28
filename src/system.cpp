@@ -1,10 +1,18 @@
+// system.cpp - Updated with optimized spatial grid and particle interaction
 #include "system.hpp"
 #include <cmath>
 #include <algorithm>
 
-ParticleSystem::ParticleSystem(size_t max_particles, unsigned int thread_count)
+ParticleSystem::ParticleSystem(size_t max_particles, unsigned int thread_count, int screen_width, int screen_height)
     : particles(max_particles), sync_point(thread_count + 1) // +1 for main thread
 {
+    // Initialize grid dimensions based on screen size
+    GRID_WIDTH = static_cast<int>(screen_width / CELL_SIZE) + 2;  // +2 for borders
+    GRID_HEIGHT = static_cast<int>(screen_height / CELL_SIZE) + 2;
+    
+    // Pre-allocate the spatial grid
+    spatial_grid.resize(GRID_WIDTH * GRID_HEIGHT);
+    
     // Initialize all particles as inactive
     for (auto& p : particles) {
         p.active = false;
@@ -62,7 +70,9 @@ void ParticleSystem::reset() {
     force_fields.clear();
     
     // Clear spatial grid
-    spatial_grid.clear();
+    for (auto& cell : spatial_grid) {
+        cell.clear();
+    }
 }
 
 size_t ParticleSystem::addEmitter(const EmitterSettings& settings) {
@@ -150,28 +160,34 @@ void ParticleSystem::applyGlobalForces(Particle& particle) {
         }
     }
     
-    // Apply particle-to-particle interaction
+    // Apply particle-to-particle interaction - OPTIMIZED VERSION
     if (particle_interaction_enabled) {
-        // We'll use a grid-based approach for optimization
-        int grid_x = static_cast<int>(particle.x / interaction_cell_size);
-        int grid_y = static_cast<int>(particle.y / interaction_cell_size);
+        // Get current particle's grid cell
+        int grid_x = static_cast<int>(particle.x / CELL_SIZE);
+        int grid_y = static_cast<int>(particle.y / CELL_SIZE);
         
-        // Check nearby grid cells
-        const float repulsion_radius = 15.0f;  // Max distance for repulsion
+        // Parameters for interaction
+        const float repulsion_radius = 15.0f;
         const float repulsion_radius_sq = repulsion_radius * repulsion_radius;
-        const float repulsion_strength = 500.0f;  // Strength of repulsion
+        const float repulsion_strength = 500.0f;
         
-        // Loop through nearby particles
-        for (int y = grid_y - 1; y <= grid_y + 1; y++) {
-            for (int x = grid_x - 1; x <= grid_x + 1; x++) {
-                auto cell_iter = spatial_grid.find(std::make_pair(x, y));
-                if (cell_iter == spatial_grid.end()) continue;
+        // Check the current cell and 8 surrounding cells
+        for (int y_offset = -1; y_offset <= 1; y_offset++) {
+            for (int x_offset = -1; x_offset <= 1; x_offset++) {
+                // Get cell index
+                size_t cell_idx = getCellIndex(grid_x + x_offset, grid_y + y_offset);
                 
                 // Check particles in this cell
-                for (const auto& other_idx : cell_iter->second) {
+                const auto& cell_particles = spatial_grid[cell_idx];
+                for (size_t other_idx : cell_particles) {
                     Particle& other = particles[other_idx];
-                    if (!other.active || &other == &particle) continue;
                     
+                    // Skip inactive particles and self
+                    if (!other.active || &other == &particle) {
+                        continue;
+                    }
+                    
+                    // Calculate distance
                     float dx = particle.x - other.x;
                     float dy = particle.y - other.y;
                     float dist_sq = dx*dx + dy*dy;
@@ -190,16 +206,28 @@ void ParticleSystem::applyGlobalForces(Particle& particle) {
 }
 
 void ParticleSystem::updateSpatialGrid() {
-    // Clear the grid
-    spatial_grid.clear();
+    // Clear all cells
+    for (auto& cell : spatial_grid) {
+        cell.clear();
+    }
     
     // Add active particles to the grid
     for (size_t i = 0; i < particles.size(); ++i) {
         const auto& p = particles[i];
         if (p.active) {
-            int grid_x = static_cast<int>(p.x / interaction_cell_size);
-            int grid_y = static_cast<int>(p.y / interaction_cell_size);
-            spatial_grid[std::make_pair(grid_x, grid_y)].push_back(i);
+            // Calculate grid cell
+            int grid_x = static_cast<int>(p.x / CELL_SIZE);
+            int grid_y = static_cast<int>(p.y / CELL_SIZE);
+            
+            // Get cell index
+            size_t cell_idx = getCellIndex(grid_x, grid_y);
+            
+            // Add particle index to cell (with limit check)
+            auto& cell = spatial_grid[cell_idx];
+            if (cell.size() < MAX_PARTICLES_PER_CELL) {
+                cell.push_back(i);
+            }
         }
     }
 }
+// src/system.cpp

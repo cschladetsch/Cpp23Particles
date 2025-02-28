@@ -1,3 +1,4 @@
+// system.hpp - Updated spatial grid implementation
 #pragma once
 #include "particle.hpp"
 #include "emitter.hpp"
@@ -5,15 +6,6 @@
 #include <thread>
 #include <barrier> // C++20 feature
 #include <atomic>
-#include <unordered_map>
-#include <utility> // for std::pair
-
-// Hash function for grid cell coordinates
-struct CellHash {
-    size_t operator()(const std::pair<int, int>& p) const {
-        return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
-    }
-};
 
 struct ForceField {
     float x, y;          // Position
@@ -28,9 +20,12 @@ private:
     std::vector<Emitter> emitters;
     std::vector<ForceField> force_fields;
     
-    // Spatial partitioning for fast particle interaction
-    std::unordered_map<std::pair<int, int>, std::vector<size_t>, CellHash> spatial_grid;
-    float interaction_cell_size = 30.0f;  // Size of each spatial grid cell
+    // Spatial partitioning - optimized implementation
+    const float CELL_SIZE = 30.0f;
+    const size_t MAX_PARTICLES_PER_CELL = 64;
+    int GRID_WIDTH;
+    int GRID_HEIGHT;
+    std::vector<std::vector<size_t>> spatial_grid;
     bool particle_interaction_enabled = true;
     
     // Multithreading
@@ -41,7 +36,9 @@ private:
     
 public:
     ParticleSystem(size_t max_particles = 10000, 
-                   unsigned int thread_count = std::thread::hardware_concurrency());
+                   unsigned int thread_count = std::thread::hardware_concurrency(),
+                   int screen_width = 1280,
+                   int screen_height = 720);
     ~ParticleSystem();
     
     void update(float dt);
@@ -66,4 +63,13 @@ private:
     void workerFunction(unsigned int id, unsigned int thread_count);
     void applyGlobalForces(Particle& particle);
     void updateSpatialGrid();
+    
+    // Helper for spatial grid
+    inline size_t getCellIndex(int x, int y) const {
+        // Clamp to valid grid coordinates
+        x = std::max(0, std::min(x, GRID_WIDTH - 1));
+        y = std::max(0, std::min(y, GRID_HEIGHT - 1));
+        return static_cast<size_t>(y * GRID_WIDTH + x);
+    }
 };
+// src/system.hpp
